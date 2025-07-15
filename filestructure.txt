@@ -1,0 +1,14 @@
+.
+├── main.py
+├── requirements.txt
+├── README.md
+└── src
+    ├── app.py
+    ├── processing
+    │   ├── batch_processor.py
+    │   └── exif_processor.py
+    └── ui
+        ├── main_window.py
+        └── widgets
+            ├── batch_tab.py
+            └── single_image_tab.py
