@@ -4,13 +4,16 @@ Single Image Tab Widget
 """
 import os
 import json
+import webbrowser
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel,
     QPushButton, QCheckBox, QSplitter, QTableWidget, QTableWidgetItem,
-    QLineEdit, QHeaderView
+    QLineEdit, QHeaderView, QMessageBox
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap, QFont
+
+from ...processing.gps_converter import GPSConverter
 
 def _exif_value_to_str(value):
     """Safely converts any EXIF value to a displayable string."""
@@ -34,6 +37,7 @@ class SingleImageTab(QWidget):
     def __init__(self):
         super().__init__()
         self.current_exif_data = {}
+        self.current_gps_coords = None
         self.init_ui()
 
     def init_ui(self):
@@ -66,11 +70,20 @@ class SingleImageTab(QWidget):
         # Actions group
         action_group = QGroupBox("Actions")
         action_layout = QVBoxLayout(action_group)
+        
+        # GPS Location button (above Extract EXIF Data button)
+        self.gps_button = QPushButton("View GPS Location")
+        self.gps_button.setEnabled(False)  # Initially disabled
+        self.gps_button.setToolTip("Open GPS location in Google Maps")
+        self.gps_button.clicked.connect(self.open_gps_location)
+        
         self.extract_button = QPushButton("Extract EXIF Data")
         self.preserve_original_cb = QCheckBox("Preserve original file (creates a backup)")
         self.preserve_original_cb.setChecked(True)
         self.save_exif_button = QPushButton("Save EXIF Changes")
         self.delete_exif_button = QPushButton("Delete All EXIF Data")
+        
+        action_layout.addWidget(self.gps_button)
         action_layout.addWidget(self.extract_button)
         action_layout.addWidget(self.preserve_original_cb)
         action_layout.addWidget(self.save_exif_button)
@@ -138,6 +151,9 @@ class SingleImageTab(QWidget):
         self.exif_table.setRowCount(0) # Clear table
         self.exif_table.setRowCount(len(exif_data))
 
+        # Update GPS button state
+        self.update_gps_button_state()
+
         common_tags = [
             'Make', 'Model', 'DateTime', 'DateTimeOriginal', 'DateTimeDigitized',
             'ExposureTime', 'FNumber', 'ISOSpeedRatings', 'FocalLength',
@@ -168,6 +184,49 @@ class SingleImageTab(QWidget):
 
         self.exif_table.resizeColumnsToContents()
         self.exif_table.setSortingEnabled(True)
+
+    def update_gps_button_state(self):
+        """Update the GPS button state based on available GPS data."""
+        gps_info = self.current_exif_data.get('GPSInfo', {})
+        coords = GPSConverter.parse_exif_gps(gps_info)
+        
+        if coords:
+            self.current_gps_coords = coords
+            self.gps_button.setEnabled(True)
+            lat, lon = coords
+            self.gps_button.setToolTip(f"Open location ({lat:.6f}, {lon:.6f}) in Google Maps")
+        else:
+            self.current_gps_coords = None
+            self.gps_button.setEnabled(False)
+            self.gps_button.setToolTip("No GPS data available in this image")
+
+    def open_gps_location(self):
+        """Open the GPS location in Google Maps."""
+        if not self.current_gps_coords:
+            QMessageBox.warning(self, "No GPS Data", "No valid GPS coordinates found in this image.")
+            return
+        
+        try:
+            latitude, longitude = self.current_gps_coords
+            maps_url = GPSConverter.create_google_maps_url(latitude, longitude)
+            
+            # Open URL in default web browser
+            webbrowser.open(maps_url)
+            
+            # Show confirmation message with coordinates
+            coord_str = GPSConverter.to_decimal_degrees(latitude, longitude)
+            QMessageBox.information(
+                self, 
+                "GPS Location Opened", 
+                f"Opening location in Google Maps:\n{coord_str}"
+            )
+            
+        except Exception as e:
+            QMessageBox.critical(
+                self, 
+                "Error Opening GPS Location", 
+                f"Failed to open GPS location:\n{str(e)}"
+            )
 
     def filter_exif_data(self, text: str):
         """Filter the EXIF table based on search text."""
